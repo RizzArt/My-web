@@ -1,0 +1,26 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { decryptSecret, maskPayoutDestination } from "@/lib/security/secrets";
+import { publishNotification } from "@/lib/realtime/publish";
+
+const input = z.object({ action: z.enum(["APPROVE", "REJECT", "PAID"]), adminNote: z.string().trim().max(500).optional(), rejectionReason: z.string().trim().min(3).max(500).optional(), referenceNumber: z.string().trim().max(120).optional() });
+export async function GET(request: Request) {
+  const session = await auth(); if (!session?.user.id || session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const status = new URL(request.url).searchParams.get("status");
+  const rows = await prisma.withdrawal.findMany({ where: status && ["PENDING", "APPROVED", "PAID", "REJECTED"].includes(status) ? { status: status as "PENDING" | "APPROVED" | "PAID" | "REJECTED" } : undefined, include: { seller: { select: { storeName: true, user: { select: { email: true } } } } }, orderBy: { createdAt: "desc" } });
+  return NextResponse.json(rows.map((row) => ({ ...row, accountNumberEncrypted: undefined, destinationMasked: maskPayoutDestination(decryptSecret(row.accountNumberEncrypted)) })));
+}
+export async function POST(request: Request) {
+  const session = await auth(); if (!session?.user.id || session.user.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const parsed = input.safeParse(await request.json().catch(() => null)); if (!parsed.success) return NextResponse.json({ error: "Action tidak valid." }, { status: 400 });
+  const withdrawalId = new URL(request.url).pathname.split("/").filter(Boolean).pop();
+  if (!withdrawalId) return NextResponse.json({ error: "Withdrawal tidak ditemukan." }, { status: 400 });
+  try { const notification = await prisma.$transaction(async (tx) => {
+    const withdrawal = await tx.withdrawal.findUnique({ where: { id: withdrawalId } }); if (!withdrawal) throw new Error("Withdrawal tidak ditemukan.");
+    if (parsed.data.action === "APPROVE") { if (withdrawal.status !== "PENDING") throw new Error("State transition tidak valid."); await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: "APPROVED", processedAt: new Date(), processedById: session.user.id, adminNote: parsed.data.adminNote || null } }); await tx.auditLog.create({ data: { actorId: session.user.id, action: "WITHDRAWAL_APPROVED", entityType: "Withdrawal", entityId: withdrawalId } }); return tx.notification.create({ data: { userId: (await tx.sellerProfile.findUniqueOrThrow({ where: { id: withdrawal.sellerId } })).userId, title: "Withdraw Disetujui", message: "Permintaan withdraw kamu disetujui admin.", type: "WITHDRAWAL", link: "/seller/wallet" } }); }
+    if (parsed.data.action === "REJECT") { if (withdrawal.status !== "PENDING" && withdrawal.status !== "APPROVED") throw new Error("State transition tidak valid."); await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: "REJECTED", processedAt: new Date(), processedById: session.user.id, adminNote: parsed.data.rejectionReason || parsed.data.adminNote || null } }); await tx.sellerWalletTransaction.create({ data: { sellerId: withdrawal.sellerId, type: "WITHDRAW_RELEASED", amount: withdrawal.amount, referenceType: "Withdrawal", referenceId: withdrawal.id, withdrawalId: withdrawal.id, description: parsed.data.rejectionReason || "Withdrawal rejected" } }); const seller = await tx.sellerProfile.findUniqueOrThrow({ where: { id: withdrawal.sellerId } }); return tx.notification.create({ data: { userId: seller.userId, title: "Withdraw Ditolak", message: parsed.data.rejectionReason || "Permintaan withdraw ditolak.", type: "WITHDRAWAL", link: "/seller/wallet" } }); }
+    if (withdrawal.status !== "APPROVED") throw new Error("Hanya withdrawal approved yang dapat ditandai paid."); await tx.withdrawal.update({ where: { id: withdrawalId }, data: { status: "PAID", paidAt: new Date(), processedAt: withdrawal.processedAt || new Date(), processedById: session.user.id, referenceNumber: parsed.data.referenceNumber || null, adminNote: parsed.data.adminNote || null } }); await tx.sellerWalletTransaction.create({ data: { sellerId: withdrawal.sellerId, type: "WITHDRAW_PAID", amount: 0, referenceType: "Withdrawal", referenceId: withdrawal.id, withdrawalId: withdrawal.id, description: "Manual payout marked paid" } }); const seller = await tx.sellerProfile.findUniqueOrThrow({ where: { id: withdrawal.sellerId }, include: { user: true } }); await tx.auditLog.create({ data: { actorId: session.user.id, action: "WITHDRAWAL_PAID", entityType: "Withdrawal", entityId: withdrawalId, metadata: { referenceNumber: parsed.data.referenceNumber || null } } }); return tx.notification.create({ data: { userId: seller.userId, title: "Withdraw Selesai", message: "Withdraw kamu telah ditandai selesai.", type: "WITHDRAWAL", link: "/seller/wallet" } });
+  }, { isolationLevel: "Serializable" }); await publishNotification(notification); return NextResponse.json({ ok: true }); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Action gagal." }, { status: 400 }); }
+}

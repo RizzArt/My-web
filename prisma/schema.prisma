@@ -1,0 +1,1367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+enum SellerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProductModerationStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ProductType {
+  FILE
+  LICENSE_KEY
+  VOUCHER
+  ACCOUNT
+  ACCESS_LINK
+}
+
+enum DeliveryMode {
+  AUTO
+  MANUAL
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  EXPIRED
+  CANCELLED
+}
+
+enum PayPalCheckoutStatus {
+  CREATED
+  CAPTURED
+  REVIEW_REQUIRED
+}
+
+enum DeliveryStatus {
+  PENDING
+  WAITING_MANUAL_DELIVERY
+  AWAITING_CONFIRMATION
+  DELIVERED
+  FAILED
+}
+
+enum SellerEarningStatus {
+  PENDING
+  AVAILABLE
+  REVERSED
+  PAID_OUT
+}
+
+enum SellerWalletTransactionType {
+  SALE_PENDING
+  SALE_AVAILABLE
+  WITHDRAW_RESERVED
+  WITHDRAW_RELEASED
+  WITHDRAW_PAID
+  REFUND_REVERSAL
+  ADMIN_ADJUSTMENT
+  PROMOTION_RESERVED
+  PROMOTION_RELEASED
+  PROMOTION_CHARGED
+}
+
+enum PromotionStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum WithdrawalMethod {
+  BANK
+  E_WALLET
+}
+
+enum RefundMethod {
+  ACCOUNT_BALANCE
+  MANUAL_TRANSFER
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+enum RefundPayoutType {
+  BANK
+  EWALLET
+}
+
+enum WalletTransactionType {
+  REFUND_CREDIT
+  PURCHASE_DEBIT
+  WITHDRAWAL_HOLD
+  WITHDRAWAL_RELEASE
+}
+
+enum StudioGenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum StudioCreditTransactionType {
+  ADMIN_CREDIT
+  GENERATION_DEBIT
+  GENERATION_REFUND
+  TOPUP_PURCHASE
+}
+
+enum AiApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum AiApiRequestStatus {
+  RESERVED
+  DISPATCHING
+  COMPLETED
+  FAILED_RELEASED
+  RECONCILIATION_REQUIRED
+  MANUAL_REVIEW
+}
+
+enum AiApiLedgerKind {
+  FUND
+  RESERVE
+  FINALIZE
+  RELEASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum AiApiBreakerState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+}
+
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CustomerWithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum BroadcastTargetAudience {
+  ALL
+  CUSTOMER
+  SELLER
+}
+
+enum InventoryStatus {
+  AVAILABLE
+  ASSIGNED
+  DELIVERED
+  SOLD
+}
+
+enum ChatAttachmentKind {
+  IMAGE
+  VIDEO
+}
+
+model User {
+  id                          String                    @id @default(cuid())
+  name                        String?
+  email                       String                    @unique
+  passwordHash                String?
+  // Existing rows are backfilled as verified; new registration explicitly sets null.
+  emailVerified               DateTime?                 @default(now())
+  emailVerificationCode       EmailVerificationCode?
+  phone                       String?
+  emailPreferences            Json?
+  role                        Role                      @default(CUSTOMER)
+  isActive                    Boolean                   @default(true)
+  sessionVersion              Int                       @default(0)
+  orders                      Order[]
+  auditLogs                   AuditLog[]
+  notifications               Notification[]
+  pushSubscriptions           PushSubscription[]
+  pushJobs                    PushJob[]
+  reviews                     ProductReview[]
+  customerConversations       Conversation[]            @relation("ConversationCustomer")
+  sentMessages                Message[]
+  uploadedChatAttachments     ChatAttachment[]          @relation("ChatAttachmentUploader")
+  withdrawals                 Withdrawal[]
+  processedWithdrawals        Withdrawal[]              @relation("WithdrawalProcessor")
+  broadcasts                  Broadcast[]
+  refunds                     RefundRequest[]
+  cancellationRequests        CancellationRequest[]
+  reviewedCancellations       CancellationRequest[]     @relation("CancellationReviewer")
+  customerWithdrawals         CustomerWithdrawal[]
+  reviewedCustomerWithdrawals CustomerWithdrawal[]      @relation("CustomerWithdrawalReviewer")
+  reviewedRefunds             RefundRequest[]           @relation("RefundReviewer")
+  walletTransactions          WalletTransaction[]
+  balance                     Int                       @default(0)
+  studioCredits               Int                       @default(0)
+  studioGenerations           StudioGeneration[]
+  studioReferences            StudioReference[]
+  studioCreditTransactions    StudioCreditTransaction[]
+  studioCreditTopUps          StudioCreditTopUp[]
+  aiApiWallet                 AiApiWallet?
+  aiApiLedgerActions          AiApiLedgerEntry[]        @relation("AiApiLedgerActor")
+  sellerApplications          SellerApplication[]
+  sellerProfile               SellerProfile?
+  reviewedSellerApplications  SellerApplication[]       @relation("SellerApplicationReviewer")
+  approvedPromotions          Promotion[]               @relation("PromotionApprover")
+  createdAt                   DateTime                  @default(now())
+  updatedAt                   DateTime                  @updatedAt
+  passwordResetTokens         PasswordResetToken[]
+  adminMfaCredential          AdminMfaCredential?
+  adminMfaEnrollment          AdminMfaEnrollment?
+}
+
+model StudioReference {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storageKey        String    @unique
+  deletionPendingAt DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model StudioModelConfig {
+  id                     String             @id @default(cuid())
+  provider               String
+  model                  String
+  displayName            String
+  isEnabled              Boolean            @default(false)
+  creditCostPerImage     Int
+  supportsReferenceImage Boolean            @default(false)
+  supportedAspectRatios  Json
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  generations            StudioGeneration[]
+
+  @@unique([provider, model])
+  @@index([isEnabled])
+}
+
+model StudioGeneration {
+  id                  String                    @id @default(cuid())
+  userId              String
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modelConfigId       String
+  modelConfig         StudioModelConfig         @relation(fields: [modelConfigId], references: [id], onDelete: Restrict)
+  provider            String
+  model               String
+  prompt              String
+  aspectRatio         String
+  outputCount         Int
+  referenceStorageKey String?
+  status              StudioGenerationStatus    @default(PENDING)
+  creditCost          Int
+  providerRequestId   String?
+  errorCode           String?
+  errorMessage        String?
+  completedAt         DateTime?
+  deletedAt           DateTime?
+  deletionPendingAt   DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  outputs             StudioGenerationOutput[]
+  creditTransactions  StudioCreditTransaction[]
+
+  @@index([userId, createdAt])
+  @@index([userId, deletedAt, createdAt])
+  @@index([status, createdAt])
+}
+
+model StudioGenerationOutput {
+  id           String           @id @default(cuid())
+  generationId String
+  generation   StudioGeneration @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  storageKey   String           @unique
+  mimeType     String
+  byteSize     Int
+  position     Int
+  createdAt    DateTime         @default(now())
+
+  @@unique([generationId, position])
+}
+
+model StudioCreditTransaction {
+  id            String                      @id @default(cuid())
+  userId        String
+  user          User                        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  generationId  String?
+  generation    StudioGeneration?           @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  topUpId       String?                     @unique
+  topUp         StudioCreditTopUp?          @relation(fields: [topUpId], references: [id], onDelete: Restrict)
+  type          StudioCreditTransactionType
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+  description   String
+  createdAt     DateTime                    @default(now())
+
+  @@unique([generationId, type])
+  @@index([userId, createdAt])
+}
+
+model StudioCreditTopUp {
+  id                 String                   @id @default(cuid())
+  orderId            String                   @unique
+  order              Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  packageCode        String
+  packageName        String
+  price              Int
+  credits            Int
+  creditedAt         DateTime?
+  refundReviewAt     DateTime?
+  refundReviewReason String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  transaction        StudioCreditTransaction?
+
+  @@index([userId, createdAt])
+}
+
+model StudioRateLimit {
+  id          String   @id @default(cuid())
+  userId      String
+  windowStart DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, windowStart])
+  @@index([windowStart])
+}
+
+model AiApiWallet {
+  id                    String                  @id @default(cuid())
+  userId                String                  @unique
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  availableMicros       BigInt                  @default(0)
+  reservedMicros        BigInt                  @default(0)
+  ledgerSequence        BigInt                  @default(0)
+  rateLimitPerMinute    Int                     @default(120)
+  concurrencyLimit      Int                     @default(4)
+  dailySpendLimitMicros BigInt                  @default(100000000000)
+  isFrozen              Boolean                 @default(false)
+  frozenReason          String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  keys                  AiApiKey[]
+  requests              AiApiRequest[]
+  ledgerEntries         AiApiLedgerEntry[]
+  dailyUsage            AiApiDailyUsage[]
+  keyDailyUsage         AiApiKeyDailyUsage[]
+  rateWindows           AiApiWalletRateWindow[]
+  concurrencyLeases     AiApiConcurrencyLease[]
+  ingressLeases         AiApiIngressLease[]
+}
+
+model AiApiKey {
+  id                    String                  @id @default(cuid())
+  walletId              String
+  wallet                AiApiWallet             @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  name                  String
+  prefix                String
+  secretHash            String                  @unique
+  issuanceEventKey      String?                 @unique
+  status                AiApiKeyStatus          @default(ACTIVE)
+  expiresAt             DateTime?
+  rateLimitPerMinute    Int                     @default(60)
+  concurrencyLimit      Int                     @default(2)
+  dailySpendLimitMicros BigInt                  @default(100000000000)
+  lastUsedAt            DateTime?
+  revokedAt             DateTime?
+  createdAt             DateTime                @default(now())
+  requests              AiApiRequest[]
+  rateWindows           AiApiRateWindow[]
+  concurrencyLeases     AiApiConcurrencyLease[]
+  ingressLeases         AiApiIngressLease[]
+  dailyUsage            AiApiKeyDailyUsage[]
+
+  @@unique([id, walletId])
+  @@index([prefix, status])
+  @@index([walletId, status])
+}
+
+model AiApiModel {
+  id                         String               @id @default(cuid())
+  publicId                   String               @unique
+  provider                   String               @default("SEKAI")
+  upstreamModelId            String
+  displayName                String
+  enabled                    Boolean              @default(false)
+  maxInputTokens             Int
+  maxOutputTokens            Int
+  privateBetaMaxOutputTokens Int
+  maxRequestBytes            Int
+  maxExecutionSeconds        Int                  @default(120)
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+  prices                     AiApiPriceVersion[]
+  requests                   AiApiRequest[]
+  providerHealth             AiApiProviderHealth?
+
+  @@unique([provider, upstreamModelId])
+  @@index([enabled])
+}
+
+model AiApiPriceVersion {
+  id                             String         @id @default(cuid())
+  modelId                        String
+  model                          AiApiModel     @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  version                        Int
+  currency                       String         @default("IDR")
+  upstreamInputMicrosPerMillion  BigInt
+  upstreamOutputMicrosPerMillion BigInt
+  retailInputMicrosPerMillion    BigInt
+  retailOutputMicrosPerMillion   BigInt
+  upstreamMinimumMicros          BigInt         @default(0)
+  retailMinimumMicros            BigInt         @default(0)
+  calculatorVersion              String
+  sourceVersion                  String
+  verifiedAt                     DateTime?
+  effectiveFrom                  DateTime
+  effectiveTo                    DateTime?
+  createdAt                      DateTime       @default(now())
+  requests                       AiApiRequest[]
+
+  @@unique([id, modelId])
+  @@unique([modelId, version])
+  @@index([modelId, effectiveFrom, effectiveTo])
+}
+
+model AiApiProviderHealth {
+  id                  String            @id @default(cuid())
+  modelId             String            @unique
+  model               AiApiModel        @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  breakerState        AiApiBreakerState @default(OPEN)
+  healthyUntil        DateTime?
+  consecutiveFailures Int               @default(0)
+  lastSuccessAt       DateTime?
+  safeReasonCode      String?
+  updatedAt           DateTime          @updatedAt
+}
+
+model AiApiRequest {
+  id                     String                 @id @default(cuid())
+  walletId               String
+  wallet                 AiApiWallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  apiKeyId               String
+  apiKey                 AiApiKey               @relation(fields: [apiKeyId, walletId], references: [id, walletId], onDelete: Restrict)
+  modelId                String
+  model                  AiApiModel             @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  priceVersionId         String
+  priceVersion           AiApiPriceVersion      @relation(fields: [priceVersionId, modelId], references: [id, modelId], onDelete: Restrict)
+  endpoint               String                 @default("chat.completions")
+  idempotencyKey         String
+  requestFingerprint     String
+  status                 AiApiRequestStatus     @default(RESERVED)
+  reservedMicros         BigInt
+  finalChargeMicros      BigInt?
+  upstreamCostMicros     BigInt?
+  promptTokens           BigInt?
+  completionTokens       BigInt?
+  providerRequestId        String?
+  upstreamIdempotencyKey   String                 @unique
+  safeErrorCode            String?
+  responseReplayCiphertext String?                @db.Text
+  responseReplayExpiresAt  DateTime?
+  admissionDate            DateTime               @db.Date
+  dispatchStartedAt      DateTime?
+  settledAt              DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  ledgerEntries          AiApiLedgerEntry[]
+  concurrencyLease       AiApiConcurrencyLease?
+
+  @@unique([id, walletId])
+  @@unique([id, apiKeyId, walletId])
+  @@unique([apiKeyId, endpoint, idempotencyKey])
+  @@index([walletId, createdAt])
+  @@index([status, updatedAt])
+  @@index([responseReplayExpiresAt])
+}
+
+model AiApiLedgerEntry {
+  id                   String          @id @default(cuid())
+  walletId             String
+  wallet               AiApiWallet     @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  requestId            String?
+  request              AiApiRequest?   @relation(fields: [requestId, walletId], references: [id, walletId], onDelete: Restrict)
+  sequence             BigInt
+  kind                 AiApiLedgerKind
+  eventKey             String          @unique
+  availableDeltaMicros BigInt
+  reservedDeltaMicros  BigInt
+  availableAfterMicros BigInt
+  reservedAfterMicros  BigInt
+  safeReasonCode       String?
+  actorId              String?
+  actor                User?           @relation("AiApiLedgerActor", fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt            DateTime        @default(now())
+
+  @@unique([walletId, sequence])
+  @@index([requestId, kind])
+  @@index([walletId, createdAt])
+}
+
+model AiApiDailyUsage {
+  id                   String      @id @default(cuid())
+  walletId             String
+  wallet               AiApiWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  usageDate            DateTime    @db.Date
+  reservedMicros       BigInt      @default(0)
+  spentMicros          BigInt      @default(0)
+  admittedRequestCount BigInt      @default(0)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@unique([walletId, usageDate])
+}
+
+model AiApiKeyDailyUsage {
+  id                   String      @id @default(cuid())
+  apiKeyId             String
+  apiKey               AiApiKey    @relation(fields: [apiKeyId, walletId], references: [id, walletId], onDelete: Restrict)
+  walletId             String
+  wallet               AiApiWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  usageDate            DateTime    @db.Date
+  reservedMicros       BigInt      @default(0)
+  spentMicros          BigInt      @default(0)
+  admittedRequestCount BigInt      @default(0)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@unique([apiKeyId, usageDate])
+  @@index([walletId, usageDate])
+}
+
+model AiApiRateWindow {
+  id          String   @id @default(cuid())
+  apiKeyId    String
+  apiKey      AiApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+  windowStart DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([apiKeyId, windowStart])
+  @@index([windowStart])
+}
+
+model AiApiWalletRateWindow {
+  id          String      @id @default(cuid())
+  walletId    String
+  wallet      AiApiWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  windowStart DateTime
+  count       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([walletId, windowStart])
+  @@index([windowStart])
+}
+
+model AiApiConcurrencyLease {
+  id         String       @id @default(cuid())
+  requestId  String       @unique
+  request    AiApiRequest @relation(fields: [requestId, apiKeyId, walletId], references: [id, apiKeyId, walletId], onDelete: Restrict)
+  apiKeyId   String
+  apiKey     AiApiKey     @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+  walletId   String
+  wallet     AiApiWallet  @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  acquiredAt DateTime     @default(now())
+  expiresAt  DateTime
+  releasedAt DateTime?
+
+  @@unique([requestId, apiKeyId, walletId])
+  @@index([apiKeyId, releasedAt, expiresAt])
+  @@index([walletId, releasedAt, expiresAt])
+}
+
+model AiApiIngressLease {
+  id         String      @id @default(cuid())
+  apiKeyId   String
+  apiKey     AiApiKey    @relation(fields: [apiKeyId, walletId], references: [id, walletId], onDelete: Restrict)
+  walletId   String
+  wallet     AiApiWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  acquiredAt DateTime    @default(now())
+  expiresAt  DateTime
+  releasedAt DateTime?
+
+  @@index([apiKeyId, releasedAt, expiresAt])
+  @@index([walletId, releasedAt, expiresAt])
+}
+
+model EmailVerificationCode {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash              String
+  expiresAt             DateTime
+  attempts              Int      @default(0)
+  lastSentAt            DateTime @default(now())
+  resendCount           Int      @default(0)
+  resendWindowStartedAt DateTime @default(now())
+  createdAt             DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model PasswordResetRequest {
+  id        String   @id @default(cuid())
+  emailHash String
+  ipHash    String
+  createdAt DateTime @default(now())
+
+  @@index([emailHash, createdAt])
+  @@index([ipHash, createdAt])
+}
+
+model SecurityRateLimit {
+  id          String   @id @default(cuid())
+  scope       String
+  keyHash     String
+  windowStart DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([scope, keyHash, windowStart])
+  @@index([windowStart])
+}
+
+model AdminMfaCredential {
+  id              String                 @id @default(cuid())
+  userId          String                 @unique
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretEncrypted String
+  enabledAt       DateTime               @default(now())
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  recoveryCodes   AdminMfaRecoveryCode[]
+}
+
+model AdminMfaRecoveryCode {
+  id           String             @id @default(cuid())
+  credentialId String
+  credential   AdminMfaCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  codeHash     String             @unique
+  usedAt       DateTime?
+  createdAt    DateTime           @default(now())
+
+  @@index([credentialId, usedAt])
+}
+
+model AdminMfaEnrollment {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretEncrypted String
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+model StoreSetting {
+  id                        String   @id @default("default")
+  storeName                 String   @default("Kolektif")
+  storeEmail                String?
+  supportEmail              String?
+  whatsapp                  String?
+  logoUrl                   String?
+  faviconUrl                String?
+  description               String?
+  currency                  String   @default("IDR")
+  timezone                  String   @default("Asia/Jakarta")
+  orderPrefix               String   @default("ORD")
+  autoExpiryHours           Int      @default(24)
+  manualPaymentTestMode     Boolean  @default(false)
+  downloadExpiryDays        Int      @default(7)
+  maxDownloadCount          Int      @default(5)
+  deliverySenderEmail       String?
+  deliveryRetryLimit        Int      @default(3)
+  inventoryWarningThreshold Int      @default(5)
+  platformCommissionPercent Int      @default(10)
+  minimumWithdrawal         Int      @default(50000)
+  sellerSettlementDays      Int      @default(0)
+  emailProvider             String?
+  smtpHost                  String?
+  smtpPort                  Int?
+  smtpSecure                Boolean  @default(true)
+  smtpFrom                  String?
+  paymentProvider           String?
+  paymentTestMode           Boolean  @default(false)
+  updatedAt                 DateTime @updatedAt
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+}
+
+model SellerApplication {
+  id              String                  @id @default(cuid())
+  userId          String
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName       String
+  storeSlug       String                  @unique
+  description     String
+  phone           String
+  email           String
+  website         String?
+  socialMedia     String?
+  identityName    String?
+  businessType    String
+  notes           String?
+  status          SellerApplicationStatus @default(PENDING)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedBy      User?                   @relation("SellerApplicationReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([status])
+  @@index([userId, status])
+}
+
+model SellerProfile {
+  id                 String                    @id @default(cuid())
+  userId             String                    @unique
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storeName          String
+  storeSlug          String                    @unique
+  description        String
+  logoUrl            String?
+  bannerUrl          String?
+  phone              String
+  email              String
+  isActive           Boolean                   @default(true)
+  isVerified         Boolean                   @default(false)
+  products           Product[]
+  conversations      Conversation[]
+  earnings           SellerEarning[]
+  walletTransactions SellerWalletTransaction[]
+  promotions         Promotion[]
+  withdrawals        Withdrawal[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+}
+
+model Product {
+  id               String                  @id @default(cuid())
+  name             String
+  slug             String                  @unique
+  description      String
+  shortDescription String?
+  price            Int
+  compareAtPrice   Int?
+  thumbnailUrl     String?
+  galleryUrls      Json?
+  seoTitle         String?
+  seoDescription   String?
+  isPublished      Boolean                 @default(true)
+  isFeatured       Boolean                 @default(false)
+  stock            Int?
+  sellerId         String?
+  seller           SellerProfile?          @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  moderationStatus ProductModerationStatus @default(APPROVED)
+  rejectionReason  String?
+  type             ProductType             @default(FILE)
+  deliveryMode     DeliveryMode            @default(AUTO)
+  categoryId       String
+  category         Category                @relation(fields: [categoryId], references: [id])
+  orderItems       OrderItem[]
+  reviews          ProductReview[]
+  conversations    Conversation[]
+  inventory        DigitalInventory[]
+  promotions       Promotion[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([categoryId])
+  @@index([sellerId, moderationStatus, isPublished])
+}
+
+model Order {
+  id                  String               @id @default(cuid())
+  orderNumber         String               @unique
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id])
+  customerName        String               @default("Customer")
+  customerEmail       String               @default("")
+  customerPhone       String?
+  customerNote        String?
+  status              OrderStatus          @default(PENDING)
+  subtotal            Int
+  total               Int
+  items               OrderItem[]
+  earnings            SellerEarning[]
+  payment             Payment?
+  deliveries          DigitalDelivery[]
+  emailStatus         EmailStatus          @default(PENDING)
+  emailSentAt         DateTime?
+  emailRetryCount     Int                  @default(0)
+  lastEmailError      String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  completedAt         DateTime?
+  refundRequest       RefundRequest?
+  cancellationRequest CancellationRequest?
+  studioCreditTopUp   StudioCreditTopUp?
+
+  @@index([userId])
+}
+
+model RefundRequest {
+  id                           String             @id @default(cuid())
+  orderId                      String             @unique
+  order                        Order              @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId                       String
+  user                         User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  amount                       Int
+  method                       RefundMethod
+  reason                       String
+  status                       RefundStatus       @default(PENDING)
+  payoutType                   RefundPayoutType?
+  payoutProvider               String?
+  payoutAccountNumberEncrypted String?
+  payoutAccountName            String?
+  createdAt                    DateTime           @default(now())
+  reviewedAt                   DateTime?
+  reviewedById                 String?
+  reviewedBy                   User?              @relation("RefundReviewer", fields: [reviewedById], references: [id])
+  adminNote                    String?
+  refundedAt                   DateTime?
+  transferReference            String?
+  walletTransaction            WalletTransaction?
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model CancellationRequest {
+  id           String                    @id @default(cuid())
+  orderId      String                    @unique
+  order        Order                     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  userId       String
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  amount       Int
+  reason       String
+  status       CancellationRequestStatus @default(PENDING)
+  createdAt    DateTime                  @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?                     @relation("CancellationReviewer", fields: [reviewedById], references: [id])
+  adminNote    String?
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model CustomerWithdrawal {
+  id                           String                   @id @default(cuid())
+  userId                       String
+  user                         User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  amount                       Int
+  status                       CustomerWithdrawalStatus @default(PENDING)
+  payoutType                   RefundPayoutType
+  payoutProvider               String
+  payoutAccountNumberEncrypted String
+  payoutAccountName            String
+  createdAt                    DateTime                 @default(now())
+  reviewedAt                   DateTime?
+  reviewedById                 String?
+  reviewedBy                   User?                    @relation("CustomerWithdrawalReviewer", fields: [reviewedById], references: [id])
+  adminNote                    String?
+  paidAt                       DateTime?
+  transferReference            String?
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model WalletTransaction {
+  id              String                @id @default(cuid())
+  userId          String
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type            WalletTransactionType
+  amount          Int
+  balanceBefore   Int
+  balanceAfter    Int
+  referenceType   String
+  referenceId     String
+  description     String
+  refundRequestId String?               @unique
+  refundRequest   RefundRequest?        @relation(fields: [refundRequestId], references: [id], onDelete: Restrict)
+  createdAt       DateTime              @default(now())
+
+  @@unique([type, referenceType, referenceId])
+  @@index([userId, createdAt])
+}
+
+model OrderItem {
+  id          String            @id @default(cuid())
+  orderId     String
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id])
+  productName String
+  unitPrice   Int
+  quantity    Int               @default(1)
+  deliveries  DigitalDelivery[]
+  earning     SellerEarning?
+  review      ProductReview?
+
+  @@index([orderId])
+}
+
+model SellerEarning {
+  id                String              @id @default(cuid())
+  sellerId          String
+  seller            SellerProfile       @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  orderId           String
+  order             Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId       String              @unique
+  orderItem         OrderItem           @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  grossAmount       Int
+  platformFee       Int
+  netAmount         Int
+  commissionPercent Int
+  status            SellerEarningStatus @default(PENDING)
+  availableAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([sellerId, status, availableAt])
+  @@index([orderId])
+}
+
+model SellerWalletTransaction {
+  id            String                      @id @default(cuid())
+  sellerId      String
+  seller        SellerProfile               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  type          SellerWalletTransactionType
+  amount        Int
+  referenceType String
+  referenceId   String
+  description   String
+  withdrawalId  String?
+  withdrawal    Withdrawal?                 @relation(fields: [withdrawalId], references: [id])
+  createdAt     DateTime                    @default(now())
+
+  @@unique([type, referenceType, referenceId])
+  @@index([sellerId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model Withdrawal {
+  id                     String                    @id @default(cuid())
+  sellerId               String
+  seller                 SellerProfile             @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  amount                 Int
+  status                 WithdrawalStatus          @default(PENDING)
+  method                 WithdrawalMethod
+  accountName            String
+  accountNumberEncrypted String
+  bankName               String?
+  walletProvider         String?
+  sellerNote             String?
+  adminNote              String?
+  referenceNumber        String?
+  requestedAt            DateTime                  @default(now())
+  processedAt            DateTime?
+  paidAt                 DateTime?
+  processedById          String?
+  processedBy            User?                     @relation("WithdrawalProcessor", fields: [processedById], references: [id])
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  walletTransactions     SellerWalletTransaction[]
+  user                   User?                     @relation(fields: [userId], references: [id])
+  userId                 String?
+
+  @@index([sellerId, status, createdAt])
+}
+
+model Promotion {
+  id              String          @id @default(cuid())
+  sellerId        String
+  seller          SellerProfile   @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  durationDays    Int
+  price           Int
+  status          PromotionStatus @default(PENDING)
+  title           String
+  subtitle        String?
+  bannerUrl       String?
+  ctaText         String?
+  startsAt        DateTime?
+  endsAt          DateTime?
+  submittedAt     DateTime        @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  approvedById    String?
+  approvedBy      User?           @relation("PromotionApprover", fields: [approvedById], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([sellerId, status, createdAt])
+  @@index([productId, status])
+  @@index([status, startsAt, endsAt])
+}
+
+model Payment {
+  id                      String          @id @default(cuid())
+  orderId                 String          @unique
+  order                   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status                  PaymentStatus   @default(PENDING)
+  provider                String?
+  externalId              String?
+  amount                  Int
+  paidAt                  DateTime?
+  // These fields are scoped to cancelled SociaBuzz late-payment monitoring.
+  lateMonitoringStartedAt DateTime?
+  lateLastCheckedAt       DateTime?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  events                  PaymentEvent[]
+  paypalCheckout          PayPalCheckout?
+
+  @@index([externalId])
+  @@index([provider, status, paidAt, lateMonitoringStartedAt])
+  @@index([provider, status, paidAt, lateLastCheckedAt])
+}
+
+// Exact foreign-currency evidence is kept separately from the IDR order ledger.
+model PayPalCheckout {
+  id                 String               @id @default(cuid())
+  paymentId          String               @unique
+  payment            Payment              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  paypalOrderId      String?              @unique
+  captureId          String?              @unique
+  currency           String
+  amount             String
+  idrToUsdRate       String
+  expectedMerchantId String
+  expiresAt          DateTime
+  status             PayPalCheckoutStatus @default(CREATED)
+  reviewReason       String?
+  capturedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([status, expiresAt])
+}
+
+// This row is deliberately absent from production. A Sandbox app must bind its
+// environment variable to this isolated database before it can take payment actions.
+model PayPalSandboxEnvironment {
+  id         String   @id @default("paypal-sandbox")
+  instanceId String   @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PaymentEvent {
+  id              String   @id @default(cuid())
+  paymentId       String
+  payment         Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  provider        String
+  providerEventId String
+  eventType       String
+  payload         Json
+  processedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([paymentId])
+}
+
+model DigitalInventory {
+  id                  String           @id @default(cuid())
+  productId           String
+  product             Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  secretValue         String
+  valueHash           String?
+  status              InventoryStatus  @default(AVAILABLE)
+  isSold              Boolean          @default(false)
+  assignedOrderId     String?
+  assignedAt          DateTime?
+  assignedOrderItemId String?
+  delivery            DigitalDelivery?
+  createdAt           DateTime         @default(now())
+
+  @@index([productId, status])
+  @@index([productId, valueHash])
+  @@index([assignedOrderId])
+}
+
+model DigitalDelivery {
+  id                String            @id @default(cuid())
+  orderId           String
+  order             Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId       String
+  orderItem         OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  inventoryId       String?           @unique
+  inventory         DigitalInventory? @relation(fields: [inventoryId], references: [id])
+  type              ProductType
+  status            DeliveryStatus    @default(PENDING)
+  valueEncrypted    String?
+  downloadTokenHash String?           @unique
+  downloadExpiresAt DateTime?
+  downloadCount     Int               @default(0)
+  maxDownloads      Int?
+  manualMessage     String?
+  deliveredAt       DateTime?
+  expiresAt         DateTime?
+  quantityIndex     Int               @default(0)
+  sentAt            DateTime?
+  autoAcceptAt      DateTime?
+  buyerAcceptedAt   DateTime?
+  createdAt         DateTime          @default(now())
+
+  @@unique([orderItemId, quantityIndex])
+  @@index([orderId])
+  @@index([status, autoAcceptAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String?
+  title          String
+  message        String
+  type           String   @default("BROADCAST")
+  link           String?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([userId, isRead, createdAt])
+  @@index([userId, conversationId, isRead])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model PushJob {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeKey   String    @unique
+  title       String
+  body        String
+  link        String
+  data        Json?
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  availableAt DateTime  @default(now())
+  lockedAt    DateTime?
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([availableAt, sentAt])
+  @@index([userId, createdAt])
+}
+
+model ProductReview {
+  id          String    @id @default(cuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItemId String    @unique
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  rating      Int
+  comment     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([productId, createdAt])
+  @@index([userId])
+}
+
+model Conversation {
+  id                String           @id @default(cuid())
+  customerId        String
+  customer          User             @relation("ConversationCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  sellerId          String?
+  seller            SellerProfile?   @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  adminSupport      Boolean          @default(false)
+  productId         String?
+  product           Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  customerDeletedAt DateTime?
+  sellerDeletedAt   DateTime?
+  adminDeletedAt    DateTime?
+  messages          Message[]
+  attachments       ChatAttachment[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([customerId, updatedAt])
+  @@index([sellerId, updatedAt])
+  @@index([adminSupport, updatedAt])
+  @@index([customerId, customerDeletedAt, updatedAt])
+  @@index([sellerId, sellerDeletedAt, updatedAt])
+  @@index([adminSupport, adminDeletedAt, updatedAt])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String           @default("")
+  isRead         Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+  attachments    ChatAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, isRead])
+}
+
+model ChatAttachment {
+  id             String             @id @default(cuid())
+  conversationId String
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  message        Message?           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  uploadedById   String
+  uploadedBy     User               @relation("ChatAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  storageKey     String             @unique
+  kind           ChatAttachmentKind
+  mimeType       String
+  byteSize       Int
+  createdAt      DateTime           @default(now())
+
+  @@index([conversationId, messageId])
+  @@index([uploadedById, messageId, createdAt])
+  @@index([messageId])
+}
+
+model Broadcast {
+  id             String                  @id @default(cuid())
+  title          String
+  message        String
+  targetAudience BroadcastTargetAudience
+  link           String?
+  recipientCount Int
+  createdById    String
+  createdBy      User                    @relation(fields: [createdById], references: [id])
+  createdAt      DateTime                @default(now())
+
+  @@index([createdById])
+  @@index([createdAt])
+}

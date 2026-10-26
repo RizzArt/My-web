@@ -1,0 +1,14 @@
+import { notFound } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-guards";
+import { prisma } from "@/lib/prisma";
+import { ProductModerationActions } from "@/components/product-moderation-actions";
+import { AdminPageHeader, currency, dateTime } from "@/components/admin-page";
+
+function gallery(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
+
+export default async function ProductReviewPage({ params }: { params: Promise<{ productId: string }> }) {
+  await requireAdmin(); const { productId } = await params;
+  const product = await prisma.product.findUnique({ where: { id: productId }, include: { category: true, seller: { select: { storeName: true, user: { select: { name: true, email: true } } } }, _count: { select: { inventory: true } } } });
+  if (!product) notFound(); const images = gallery(product.galleryUrls);
+  return <main className="mx-auto max-w-5xl px-5 py-12 sm:py-20"><AdminPageHeader eyebrow="Seller moderation" title="Review product" summary="Periksa detail produk sebelum ditampilkan di storefront." backHref="/admin/products" /><section className="mt-10 grid gap-6 rounded-2xl bg-white p-6 shadow-soft sm:p-8"><div className="grid gap-4 sm:grid-cols-2">{product.thumbnailUrl ? <img src={product.thumbnailUrl} alt={product.name} className="aspect-video w-full rounded-2xl object-cover" /> : <div className="flex aspect-video items-center justify-center rounded-2xl bg-ink text-white/60">No thumbnail</div>}<div className="grid gap-3 text-sm"><p><strong>Seller:</strong> {product.seller?.storeName ?? "Platform"}</p><p><strong>Seller account:</strong> {product.seller?.user.name ?? "-"} · {product.seller?.user.email ?? "-"}</p><p><strong>Category:</strong> {product.category.name}</p><p><strong>Normal price:</strong> {currency.format(product.price)}</p><p><strong>Promo price:</strong> {product.compareAtPrice ? currency.format(product.compareAtPrice) : "-"}</p><p><strong>Delivery type:</strong> {product.type}</p><p><strong>Stock/inventory:</strong> {product.stock ?? product._count.inventory}</p><p><strong>Created:</strong> {dateTime.format(product.createdAt)}</p><p><strong>Status:</strong> {product.moderationStatus}</p></div></div><div><h2 className="display text-2xl font-bold">{product.name}</h2><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink/65">{product.description}</p></div>{images.length > 0 && <div><h2 className="display text-xl font-bold">Gallery</h2><div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{images.map((image) => <img key={image} src={image} alt="Gallery product" className="aspect-square w-full rounded-xl object-cover" />)}</div></div>}<ProductModerationActions productId={product.id} status={product.moderationStatus} /></section></main>;
+}

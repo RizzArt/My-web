@@ -1,0 +1,8 @@
+"use client";
+import { useState } from "react";
+
+export function RefundActions({ id, status, method }: { id: string; status: string; method: string }) {
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
+  async function act(action: "approve" | "reject" | "mark-refunded") { const adminNote = window.prompt(action === "reject" ? "Catatan penolakan wajib diisi" : "Catatan admin (opsional)") ?? ""; if (action === "reject" && !adminNote.trim()) return; const transferReference = action === "mark-refunded" ? window.prompt("Reference transfer (opsional)") ?? "" : undefined; setBusy(true); const response = await fetch(`/api/admin/refunds/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminNote, transferReference }) }); const result = await response.json(); setBusy(false); if (!response.ok) setMessage(result.error ?? "Action gagal."); else window.location.reload(); }
+  return <div className="flex flex-wrap gap-2">{status === "PENDING" && <><button disabled={busy} onClick={() => act("approve")} className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white">Setujui</button><button disabled={busy} onClick={() => act("reject")} className="rounded-full border border-red-300 px-4 py-2 text-xs font-bold text-red-700">Tolak</button></>}{status === "APPROVED" && method === "MANUAL_TRANSFER" && <button disabled={busy} onClick={() => act("mark-refunded")} className="rounded-full bg-mint px-4 py-2 text-xs font-bold">Tandai Sudah Dikembalikan</button>}{message && <span className="text-sm text-red-700">{message}</span>}</div>;
+}

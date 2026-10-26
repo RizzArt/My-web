@@ -1,0 +1,10 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireAdmin } from "@/lib/auth-guards";
+import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/security/secrets";
+import { RefundActions } from "@/components/refund-actions";
+import { currency, dateTime } from "@/components/admin-page";
+
+export const dynamic = "force-dynamic";
+export default async function AdminRefundDetail({ params }: { params: Promise<{ refundId: string }> }) { await requireAdmin(); const row = await prisma.refundRequest.findUnique({ where: { id: (await params).refundId }, include: { order: { include: { items: true } }, user: true } }); if (!row) notFound(); return <main className="mx-auto max-w-2xl px-5 py-12 sm:py-20"><Link href="/admin/refunds" className="text-sm font-semibold text-coral">← Kembali</Link><h1 className="display mt-4 text-4xl font-bold">Refund detail</h1><div className="mt-8 space-y-3 rounded-2xl bg-white p-6 shadow-soft"><p>Refund: <strong>{row.id}</strong></p><p>Order: <strong>#{row.order.orderNumber}</strong></p><p>Buyer: {row.user.name ?? row.user.email}</p><p>Produk: {row.order.items.map((item) => item.productName).join(", ")}</p><p>Nominal: <strong>{currency.format(row.amount)}</strong></p><p>Method: {row.method}</p><p>Completed: {row.order.completedAt ? dateTime.format(row.order.completedAt) : "-"}</p><p>Request: {dateTime.format(row.createdAt)}</p><p>Alasan: {row.reason}</p>{row.method === "MANUAL_TRANSFER" && <div className="rounded-xl bg-sand p-4"><p>Tujuan: {row.payoutType} · {row.payoutProvider}</p><p>Nama pemilik: {row.payoutAccountName}</p><p>Nomor: <strong>{row.payoutAccountNumberEncrypted ? decryptSecret(row.payoutAccountNumberEncrypted) : "-"}</strong></p></div>}<p>Status: <strong>{row.status}</strong></p>{row.adminNote && <p>Catatan admin: {row.adminNote}</p>}{row.refundedAt && <p>Refunded: {dateTime.format(row.refundedAt)}</p>}<RefundActions id={row.id} status={row.status} method={row.method}/></div></main>; }
